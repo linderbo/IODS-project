@@ -1,7 +1,72 @@
-# Insert chapter 2 title here
+# Excercise 2 - linear regression model
 
-*Describe the work you have done this week and summarize your learning.*
+## Introduction and data
+We are analyzing data from a survey of students enrolling in the course (Introduction to Social Statistics, fall 2014 - in Finnish). 
 
-- Describe your work and results clearly. 
-- Assume the reader has an introductory course level understanding of writing and reading R code as well as statistical methods
-- Assume the reader has no previous knowledge of your data or the more advanced methods you are using  
+The data is imported from this repository with the code below, and the structure and dimensions of data is checked.
+```{r import}
+learning2014 <- read.table("data/learning2014.txt")
+str(learning2014)
+```
+We imported  the data from a .txt file and can see that there are `r nrow(learning2014)` observations (students) and `r ncol(learning2014)` variables. Variables include *gender*, *age*, Global *attitude* towards statistics, and combined variables that are the mean of questions in the dimensions of *deep*, *strategic* and *surface*, and finally *points* on the exam.
+
+Let큦 explore the data!
+```{r explore, fig.width = 10, fig.height = 10}
+# i increased the figure size for readability in the r code chunk header. See source code for details
+# access the GGally and ggplot2 libraries
+library(ggplot2)
+library(GGally)
+
+# create a plot matrix with ggpairs()
+p <- ggpairs(learning2014, mapping = aes(col = gender, alpha = 0.3), lower = list(combo = wrap("facethist", bins = 20)))
+# draw the plot
+p
+```
+
+This shows a scatter matrix of the observations grouped by gender. There were more females in the course. Correlations between variables can be seen as black after "Cor:" The highest correlation can be found between *attitude* and *points*.
+
+## Regression analysis
+
+We큞l create linear regression models for *attitude*, *deep* and *stra* as explanatory variables with *points* as target variable, and print out a summary
+
+```{r linearmodel}
+#we assign the linear model to themodel
+themodel <- lm(formula = points ~ attitude + stra + deep, data = learning2014)
+summary(themodel)
+```
+
+In this linear model Exam points are positively correlated with attitude towards statistics by a factor of 3.53. p is very small, 4.12e-09 which tells us that the null hypothesis (i.e. that attitude has no effect on points) is false. We can conlude that *a positive attitude towards statistics in general is  a predictor of higher exam points!*
+
+With regards to the predictors *deep* and *stra* p is above the commonly used limit of 0.05 and thus they are not statistically significant predictors of exam points.
+
+We큞l remove *deep* and *stra* from the model and run it again.
+
+```{r linearmodelatt}
+modelatt <- lm(formula = points ~ attitude, data = learning2014)
+summary(modelatt)
+```
+According to the model, for each 1 point increase in attitude, the exam points are incresed by 3.53 points. The relationship is statistically significant: p = 4.119e-09.
+
+R squared is a measure of how much of the total variation is explained by the model. Multiple R squared is 0.1906, indicating that in this model attitude accounts for 19% of variance in exam points.
+
+## Validation of the model
+Finally we큞l produce diagnostic plots for the model.
+
+```{r diagnostics1}
+# We use the function plot.lm, see ?plot.lm for help. Several diagnostic plots could be drawn at once using plot(modelatt, which = c(1,2,5,))
+plot(modelatt, which = c(1))
+```
+
+The residuals vs fitted plot tells us about the distribution of residuals with regards to fitted values. The assumption is that the distribution of residuals should be normal, and should not depend on the explanatory values. There is a slight tapering of residuals towards the higher end of expected values, suggesting that there is a small subpopulation of those with higher attitude scores having less variance than the rest of the population. There are also a couple of  outliers with higher negative variance. Otherwise the residuals seem evenly distributed. 
+```{r diagnostics2}
+plot(modelatt, which = c(2))
+```
+
+The q-q plot is a way to inspect the distribution of our data. Normally distributed data should fall on a straight line. Our plot is only slightly curved towards the ends and most observations fall on the line.
+```{r diagnostics5}
+plot(modelatt, which = c(5))
+```
+
+In the residuals vs. leverage plot we are looking for observations that fall in the upper or lower right corners. No such observations can be found, and thus we have no outliers that are harmful to the model
+
+**I conclude that the linear regression model with attitude as an explanatory variable and exam points as dependent is valid.**
