@@ -1,0 +1,113 @@
+# Excercise 3 - Logistic regression
+
+```{r setup3, include = FALSE}
+library(dplyr)
+library(ggplot2)
+```
+
+## Introduction and data
+We are exploring data from two questionnaires focusing on high school student performance and alcohol consumption from two portuguese schools.
+
+We import the data into R from a local data file. Source data can be found here: <https://archive.ics.uci.edu/ml/datasets/Student+Performance>
+
+```{r import3}
+alc <- read.table("data/alc.txt")
+colnames(alc)
+```
+There are variables in the data are listed above. There is binary, nominal and numeric data relating to background and behavior of students. G1-G3 are grades, (g3 is the final grade). "alc_use" is constructed as the mean of "Dalc" and "Walc", "high_use" is a binary TRUE or FALSE for high alcohol use (TRUE when alc_use >2). More detailed information can be found behind the link above.
+
+## We are going to study the relationships between high/low alcohol consumption and these 4 arbitrarily choosen variables:
+
+* Medu - Mothers level of education (numeric 0-4). 0 is none, 4 is higher education. Hypothesis: Lower alcohol consumption with higher mothers education level.
+* abscences - number of school abscences (numeric 0 to 45) Hypothesis: many abscences related to higher alcohol consumption.
+* schoolsup - extra educational support (binary yes or no) Hypothesis: need of school support related to higher alcohol consumption.
+* failures - number of previous class failure (numeric: range 0-3): Hypothesis: previous failures relates to hihger alcohol consumption.
+
+```{r Meduplot3}
+
+# initialize a plot of high_use and Medu
+Meduplot <- ggplot(alc, aes(x = high_use, y = Medu, col = sex))
+
+# define the plot as a boxplot and draw it
+Meduplot + geom_boxplot() + ylab("Mothers education level") +ggtitle("Mothers education level by alcohol consumption and sex")
+```
+
+No visible difference between students mothers education levels when grouped by high_use.
+
+```{r absencesplot3}
+# initialise a plot of high_use and absences
+absencesplot <- ggplot(alc, aes(x = high_use, y = absences, col = sex))
+
+# define the plot as a boxplot and draw it
+absencesplot +geom_boxplot() + ggtitle("Student absences by alcohol consumption and sex")
+```
+
+A tendence towards more abscences with higher alcohol consumption.
+
+```{r schoolsupport3}
+#barplot with number of students
+ggplot(data=alc, aes(x=schoolsup, fill=high_use)) + geom_bar() + ggtitle("Extra educational support and alcohol consumption")
+
+```
+
+Proportion of students with high alcohol use seems to be less in the group receiving Extra school support
+
+```{r failplot3}
+# Cross-tabulate by failures and high_use
+alc %>% group_by(failures, high_use) %>% summarise(count = n())
+ggplot(data=alc, aes(x=failures, fill=high_use)) + geom_bar() + ggtitle("Number of students with n class failures by alchol consumption")
+
+```
+
+Students with high alcohol consumption are overrepresented in the groups with previous class failures.
+
+## Logistic regression
+We use the function glm() to fit a logistic regression model "m" with *high_use* as target, and *Medu*, *abscences*, *schoolsup* and *failures* as predictors and print a summary.
+
+```{r logistic regression3}
+m <- glm(high_use ~ Medu + absences + schoolsup + failures, data = alc, family = "binomial")
+summary(m)
+```
+
+Abscences and failures are statistically positively associated with high use of alcohol. (p <0.05)
+
+Next we compute odds ratios with confidence intervals from the coefficients of the model with the exp function.
+
+```{r OR:S3}
+# compute odds ratios
+OR <- coef(m) %>% exp
+
+# compute confidence intervals (CI)
+CI <- confint(m) %>% exp
+
+# print out the odds ratios with their confidence intervals
+cbind(OR, CI)
+```
+
+The confidence intervals for Medu and schoolsup include the number 1 in the 95% confidence interval range, and thus the association with these and alcohol use is not statistically significant, just as we found in the summary of our model previously. OR 1.089 for abscences means that for each additional abscence the odds for high use of alcohol is 8.9% higher. The same goes for class failures, but the odds are even higher OR = 1.708.
+
+## Predictions of the model vs. actual values
+
+Well rebuild the model using the statistically significant predictors failures and abscences, calculate probabilities for each individual and compare them to actual values.
+```{r predictor800003}
+
+# fit the model
+m2 <- glm(high_use ~ failures + absences, data = alc, family = "binomial")
+
+#  predict() the probability of high_use and add the predicted probabilities to 'alc'
+alc <- mutate(alc, probability = predict(m2, type = "response"))
+
+# use the probabilities to make a prediction of high_use( true if prob >0.5)
+alc <- mutate(alc, prediction = probability > 0.5)
+
+# tabulate the target variable versus the predictions
+table(high_use = alc$high_use, prediction = alc$prediction)
+```
+
+This gives us 10 false positives, and 99 false negatives out of 382 observations. That gives a probability of `r (10 + 99) / 382` for false classification. Guessing woud give a probability of 0.5, so this model preforms about twice as good as pure guesswork.
+ 
+
+
+
+
+
