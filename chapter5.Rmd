@@ -1,0 +1,125 @@
+# Excercise 5 - Dimensionality reduction techniques
+
+```{r 5setup, include = FALSE}
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(corrplot)
+library(knitr)
+
+human <- read.table("data/human.txt")
+Explanation <- c("Maternal mortality","Adolescent birth rate","Female share of parliamentary seats","Ratio of F to M with secondary education","Ratio of F to M in labour force","Life expectancy at birth","Excpected years of schooling","Gross national income per capita")
+Variable <- colnames(human)
+tabell <- cbind(Variable, Explanation)
+
+```
+
+## Introduction and data
+
+We are using the `human` dataset, which originates from the United Nations Development Programme. This dataset has ``r ncol(human)`` variables and ``r nrow(human)`` observations, all of which are different countries. The variables and descriptions are shown below.
+
+`r kable(tabell)`
+
+```{r}
+ggpairs(human)
+```
+
+Distribution of most variables look skewed, except for `edu.exp` which seems normally distributed. There are also a bunch of apparent correlations between variables, eg. `edu.exp` and `life.exp`
+```{r}
+corrplot(cor(human), method="circle", type="lower", cl.pos="b", tl.pos="d", tl.cex=0.7)
+```
+
+The correlations are better visualized here. For example: Strong correlation between *Maternal mortality* and *Adolescent birth rate.*
+
+```{r}
+humansummary <- summary(human)
+kable(humansummary)
+```
+
+Above are summaries of variables. Maternal mortality is n/100000 births, and Adolescent birth rate is births / 1000 females aged 15-19.
+
+## Principal component analysis
+```{r 5PCAunscaled, fig.width = 10, fig.height=6}
+#perform PCA on unscaled human data
+pca_human1 <- prcomp(human)
+
+# draw a biplot of the principal component representation and the original variables
+biplot(pca_human1, choices = 1:2, cex = c(0.7, 0.7), col = c("grey20", "magenta"))
+
+```
+
+PCA doesn´t work properly on unscaled data. The mean GNI per capita is > 1000 times the mean of the next highest (Maternal mortality) and thus it´s the only variable that shows in the plot. Data should be scaled for PCA. The error messages above relate to arrows in the plot which would be of zero length because of scaling issues.
+
+```{r 5PCAscaled, fig.width = 10, fig.height=6 }
+#scale with default options (center to 0 and divide by SD)
+human2 <- scale(human)
+#perform PCA on scaled human data
+pca_human2 <- prcomp(human2)
+
+# draw a biplot of the principal component representation and the original variables
+biplot(pca_human2, choices = 1:2, cex = c(0.7, 1.0), col = c("grey20", "red"))
+
+```
+
+This looks better. Principal component 1 is affected by 6 out of 8 variables in the data to a similar degree. Adolescent birth rate and maternal mortality are positively correlated, but negatively correlated with the following group of phenomenons, (which again are positively correlated): life expectancy, education expectancy, ratio of females to males receiving secondary education, and GNI per capita. Uncorrelated with the previous, but correlated with eachother are percentage of females in parliament, and ratio of females to males in the labour force. These two affect the secondary principal component.
+
+So i conclude that GNI, and availability of education - for both genders are positively correlated with life expectancy, and adolescent births and maternal mortality are inversely correlated with these. Percentage of females in the work force and as representatives in parliament are not correlated with the phenomenons above.
+
+## Tea Time
+
+We have a look at questionnaire data regarding consumption of tea. The data is included in the `FactomineR` package. I choose a few variables wich would be interesting for me as a tearoom owner. Structure of the chosen data and a summary are seen below.
+```{r fig.width=10 , fig.height=10, warning= FALSE}
+library(FactoMineR)
+library(tidyr)
+data(tea)
+
+keeptea=c("Tea","sugar","tea.time","tearoom","SPC","sex","resto","pub","How","how","friends")
+
+# select the 'keeptea' to create a new dataset
+tea_kept <- dplyr::select(tea, one_of(keeptea))
+
+# look at the summaries and structure of the data
+
+summary(tea_kept)
+str(tea_kept)
+# visualize the dataset
+gather(tea_kept) %>% ggplot(aes(value)) +geom_bar() + facet_wrap("key", scales = "free") + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+```
+
+A summary and structure of data is seen above along with boxplots. Unfortunately for us tearoom owners most people drink their tea at home, not in pubs, restaurants or tearooms. This is reflected in that most people make their tea by teabagging.
+
+## Multiple correspondence analysis
+
+Let´s do a multiple correspondence analysis on the kept data.
+
+```{r }
+# multiple correspondence analysis
+mca <- MCA(tea_kept, graph = FALSE)
+
+# summary of the model
+summary(mca)
+```
+
+Look at the summary of the MCA. The first and second dimensions account for 10.7% and 8.3% of variance, respectively.
+
+```{r fig.width=10 , fig.height=10, warning= FALSE }
+# visualize MCA
+
+plot(mca, habillage = "quali")
+plot(mca, invisible=c("ind") ,habillage="quali")
+```
+
+From the first plot we can see a homogenous blob of individuals, with only one small group of outliers (22, 44, 66, 127, and 135) 
+
+In the second plot the individuals are hidden, and we can see that dim. 1 opposes public places that sell tea, i.e `tearooms`, `restaurants` and `pubs` with `**not** tearooms, restaurants and pubs.` in dim. 2 `earl grey` is opposed with `black tea`, just as `seniors`, `middle`, and `non-workers`, which are opposed with `students`. `other` is a strong determinant in both dimensions.
+
+I find that ´Earl Grey´, ´Lemon´, ´F´ and ´Friends´ are grouped together. Maybe promoting **Two Earl Grey tea:s with lemon for the price of one!** could bring new customers to my tearoom?
+
+```{r }
+keeprows = c(22,44,66,127,135)
+outliers <- tea_kept[keeprows, ]
+outliers
+
+```
+
+Finally a look at the group of outliers mentioned previously. The distinguishing features seem to be that they all drink black tea without sugar, but with the `other` (vs `lemon`, `milk`, and `alone`) attribute, which is quite uncommon, only 9 out of 300 individuals.
