@@ -1,0 +1,256 @@
+# Excercise 6 - Longitudinal data.
+
+```{r 6setup, include = FALSE}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(lme4)
+
+RATSL <- read.table("data/RATSL.txt")
+#factor id and group
+RATSL$ID <- factor(RATSL$ID)
+RATSL$Group <- factor(RATSL$Group)
+
+```
+
+## MABS chapter 8 analyses on RATS data
+
+In the `RATSL` data we have 16 individual rats in 3 feeding `Group`s with different diets. The rats are followed for ~8 weeks (`Time`in days). The `Weight` of the rats is measured. There are 176 weight measurements in total.
+```{r}
+dim(RATSL)
+summary(RATSL)
+```
+
+We´ll plot the individual weight curves:
+
+```{r fig.width=10, fig.height=10}
+ggplot(RATSL, aes(x = Time, y = Weight, colour = ID)) +
+  geom_line() +
+  facet_grid(. ~ Group, labeller = label_both) +
+  theme(legend.position = "none") + 
+  scale_y_continuous(limits = c(min(RATSL$Weight), max(RATSL$Weight)), name="Weight (grams)") 
+```
+
+There are some clearly visible differences in starting weights between groups. Group 1 rats weigh less than group 2 and 3. All weights tend to increase with time. The slope in group 1 is not as steep as in groups 2 or 3.
+
+We´ll standardize the data and do the same plot again.
+
+```{r fig.width=10, fig.height=10}
+RATSL <- RATSL %>%
+  group_by(Time) %>%
+  mutate(stdWeight = (Weight - mean(Weight))/sd(Weight)) %>%
+ # mutate(sclWeight = scale(Weight)) %>% #scale does the same thing as we learned earlier.
+  ungroup()
+  
+ggplot(RATSL, aes(x = Time, y = stdWeight, colour = ID)) +
+  geom_line() +
+  facet_grid(. ~ Group, labeller = label_both) +
+  theme(legend.position = "none") + 
+  scale_y_continuous(limits = c(min(RATSL$stdWeight), max(RATSL$stdWeight)), name="Weight, standardized") 
+
+```
+
+In plot on standardized values we see that most lines are approximately horizontal, and this goes for all groups. Fat rats stay fat and slim rats stay slim, relatively speaking, althoug the absolute weight values increased as we saw in the first plot. This is called the `tracking phenomenon.
+
+We now plot mean weights of groups + SEM
+
+```{r fig.height=10, fig.width=6}
+# Number of measurement points, baseline included
+n <- RATSL$Time %>% unique() %>% length()
+
+# Summary data with mean and standard error of bprs by treatment and week 
+RATSSummary <- RATSL %>%
+  group_by(Group, Time) %>%
+  summarise( mean = mean(Weight), se = (sd(Weight)/sqrt(n))) %>%
+  ungroup()
+
+# Glimpse the data
+glimpse(RATSSummary)
+
+# Plot the mean profiles
+ggplot(RATSSummary, aes(x = Time, y = mean, color = Group, shape = Group)) +
+  geom_line() +
+  scale_colour_manual(values = c("red","green","blue")) +
+  geom_point(size=3) +
+  scale_shape_manual(values = c(1,2,3)) +
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se, linetype=NULL), width=0.3) +
+  theme(legend.position = c(0.8,0.4)) +
+  scale_y_continuous(name = "mean(Weight) +/- se(Weight)")
+
+```
+
+The groups are each on their own weight tracks which differ from eachother. Perhaps group 2 approaches group 3 somewhat?  As starting weights are different between groups, and probably infuelnceweight gain i want to look at relative weight gain compared to day 1.  We calculate it in percentage of weight compared to initial weight and plot it in the same manner as above.
+
+```{r fig.height=10, fig.width=6}
+# I want to look at relative weight increase when compared to starting weights, and calculate it with the following command:
+
+RATSL <- RATSL %>%
+  group_by(ID,Group) %>%
+  mutate(Weight_rel = Weight/Weight[Time == 1]*100)
+
+# Number of measurement points, baseline included
+n <- RATSL$Time %>% unique() %>% length()
+
+# Summary data with mean and standard error of bprs by treatment and week 
+RATSSummary_rel <- RATSL %>%
+  group_by(Group, Time) %>%
+  summarise( mean = mean(Weight_rel), se = (sd(Weight_rel)/sqrt(n))) %>%
+  ungroup()
+
+# Plot the mean profiles
+ggplot(RATSSummary_rel, aes(x = Time, y = mean, color = Group, shape = Group)) +
+  geom_line() +
+  scale_colour_manual(values = c("red","green","blue")) +
+  geom_point(size=3) +
+  scale_shape_manual(values = c(1,2,3)) +
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se, linetype=NULL), width=0.3) +
+  theme(legend.position = c(0.8,0.4)) +
+  scale_y_continuous(name = "mean(Weight) +/- se(Weight)")
+
+```
+
+The relative weight gains are quite similar, but group 2 seems to gain weight a little faster. Lets boxplot this after removing baseline measurements
+
+```{r fig.height=10, fig.width=10}
+RATSLBs <- RATSL %>%
+  filter(Time > 1) %>%
+  group_by(Group, ID) %>%
+  summarise(mean=mean(Weight_rel)) %>%
+  ungroup()
+
+# Draw a boxplot of the mean versus Group
+ggplot(RATSLBs, aes(x = Group, y = mean)) +
+  geom_boxplot() +
+  stat_summary(fun.y = "mean", geom = "point", shape=23, size=4, fill = "white") +
+  scale_y_continuous(name = "mean(relative weight in %, without baseline measurement", breaks=seq(100,110,1))
+
+
+```
+I´m happy with the plot, the difference seems to persist between G2 and G3. Let´s test.
+
+```{r}
+# Add the baseline (100) to the summary data
+RATSLBs <- RATSLBs %>%
+  mutate(baseline = 100)
+
+# Fit the linear model with the mean as the response 
+fit <- lm(mean ~ baseline + Group, data = RATSLBs)
+
+# Compute the analysis of variance table for the fitted model with anova()
+
+anova(fit)
+```
+
+The anova gives us p =0.28. This tells us that no significant differences in relative weight gains exist between groups. Thus there is no need to test this between individual groups.
+
+## MABS chapter 9 analyses on BPRS data.
+
+We read the BPRS data in long form, factorize `subject`and `treatment` variables. and have a look at the data
+
+```{r }
+BPRSL <- read.table("data/BPRSL.txt")
+
+BPRSL$subject <- factor(BPRSL$subject)
+BPRSL$treatment <- factor(BPRSL$treatment)
+
+str(BPRSL)
+summary(BPRSL)
+```
+
+The data consists of values of Brief Psychiatric Rating Scale (BPRS) in 40 men in 2 treatment groups followed up for 8 weeks and baseline (week 0) A plot of the data is seen below. For the plot we group data by `ìnteraction(subject,treatment)`
+
+```{r fig.height=6, fig.width=10}
+ggplot(BPRSL, aes(x = week, y = bprs, group = interaction(subject,treatment))) +
+  geom_line(aes(colour = treatment)) + scale_x_continuous(name = "Time (weeks)", breaks = seq(0, 8, 1)) +
+  #facet_grid(. ~ treatment, labeller = label_both) +
+  scale_y_continuous(name = "BPRS score") +
+  theme(legend.position = "right")
+
+```
+
+No clear distinction between groups or any trend can be identified from this plot.
+
+We´ll ignore that the data consists of repeated measures, and fit a multiple linear regression model with `bprs` as response, and `week` and `treatment` as explanatory variables.
+
+```{r }
+bprs_lrm <- lm(bprs ~ week + treatment, BPRSL)
+# print out a summary of the model
+summary(bprs_lrm)
+
+```
+
+Ignoring the longitudinal nature of the data the linear regression model indicates that treatment has no effect, whereas with increasing weeks bprs scores decrease by approximately 2.27/week.
+
+### Random intercept
+We´ll now fit a *random intercept model* using the package ´lme4´ with `week` and `treatment` as explanatory variables, and `subject` as random effect to account for differences in individuals intercept  ~ starting values of bprs scores.
+
+```{r}
+# Create a random intercept model
+BPRS_rim <- lmer(bprs ~ week + treatment + (1 | subject), data = BPRSL, REML = FALSE)
+
+# Print the summary of the model
+summary(BPRS_rim)
+
+```
+
+The estimated slope is still -2.27, but std. error is slightly lower 0.21 vs. 0.25. 
+
+### Random intercept and random slope
+Then we fit a  random intercept *and* random slope model to also account for individuals random slopes in bprs scores vs. time.
+
+```{r}
+
+# create a random intercept and random slope model
+BPRS_rism <- lmer(bprs ~ week + treatment + (week | subject), data = BPRSL, REML = FALSE)
+
+# print a summary of the model
+summary(BPRS_rism)
+
+# perform an ANOVA test on the two models
+anova(BPRS_rim, BPRS_rism)
+
+```
+
+We get a chi squared of 7.27 with 2 degrees of freedom, and a p of 0.026 indicating that this model with random intercepts and slopes for different subjects is a better fit than the previous model with only random intercepts.
+
+###Random intercept and random slope with interaction of time and treatment
+And finally a random intercept and random slope model with the interaction of time and treatment.
+
+```{r fig.width=10, fig.height=6}
+# create a random intercept and random slope model with the interaction
+BPRS_rismi <- lmer(bprs ~ week * treatment + (week | subject), data = BPRSL, REML = FALSE)
+
+# print a summary of the model
+summary(BPRS_rismi)
+
+# perform an ANOVA test on the two models
+anova(BPRS_rismi, BPRS_rism)
+
+```
+
+The model with an interaction of time and treatment is not significantly better than the previous one. (p = 0.07)
+Thus finally we plot the original plot with measured bprs and a plot with fitted values from the random slope + intercept model without interaction of time and treatment.
+
+```{r}
+
+
+# draw the plot of BPRSL with the observed bprs scores
+ggplot(BPRSL, aes(x = week, y = bprs, group = interaction(treatment,subject))) +
+  geom_line(aes(colour = treatment)) +
+  scale_x_continuous(name = "Time (weeks)", breaks = seq(0, 8, 1)) +
+  scale_y_continuous(name = "BPRS score") +
+  theme(legend.position = "right")
+
+# Create a vector of the fitted values
+Fitted <- fitted(BPRS_rism)
+# Create a new column fitted to BPRSL
+
+BPRSL <- mutate(BPRSL, FittedBPRS = Fitted)
+# draw the plot of BPRSL with the Fitted values of bprs scores
+ggplot(BPRSL, aes(x = week, y = FittedBPRS, group = interaction(treatment,subject))) +
+  geom_line(aes(colour = treatment)) +
+  scale_x_continuous(name = "Time (weeks)", breaks = seq(0, 8, 1)) +
+  scale_y_continuous(name = "Fitted BPRS score") +
+  theme(legend.position = "right")
+
+```
